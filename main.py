@@ -15,15 +15,16 @@ pytesseract.pytesseract.tesseract_cmd = caminho
 texto = pytesseract.image_to_string(imagem)
 
 #colocar cada linha dentro de uma posição de uma listagit
-linhas = texto.split('\n')
+lista = texto.split('\n')
+#limpando a lista, retirando linhas vazias.
+listalimpa = [s for s in lista if s.strip()]
+cont = 0
 
-for linha in linhas:
+for linha in listalimpa:
     if 'R$' in linha:
         #Verificar valor do pix
         #print('Valor do Pix encontrado:', linha)
         #Separando a string ultilizando o separador R$ e atribuindo a posição 1, que contem o valor do pix. 
         VALOR_PIX = linha.split('R$')[1]
-
-print('Valor do Pix encontrado:', VALOR_PIX)
-
-print('lista:', linhas)
+    print(f'{cont}: {linha}')
+    acont += 1
