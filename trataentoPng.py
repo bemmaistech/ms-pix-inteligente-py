@@ -11,21 +11,21 @@ os.environ["TESSDATA_PREFIX"] = r"C:\Users\dener\AppData\Local\Programs\Tesserac
 class ImageOCR:
     """Classe para extrair texto de uma imagem usando OCR."""
 
-    def __init__(self, image_path: str):
-        """Inicializa com o caminho da imagem."""
-        self.image_path = Path(image_path)
+    def __init__(self):
+        """Inicializa a classe sem caminho definido."""
         self.output_dir = Path("img")
         self.output_dir.mkdir(exist_ok=True)
         self.image = None
 
-    def preprocess_image(self, min_width: int = 1200):
+    def preprocess_image(self, image_path: str, min_width: int = 1200):
         """Pré-processa a imagem para melhorar OCR."""
-        if not self.image_path.exists():
-            raise FileNotFoundError(f"Imagem não encontrada: {self.image_path}")
+        image_path = Path(image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Imagem não encontrada: {image_path}")
 
-        img = cv2.imread(str(self.image_path))
+        img = cv2.imread(str(image_path))
         if img is None:
-            raise ValueError(f"Não foi possível ler a imagem: {self.image_path}")
+            raise ValueError(f"Não foi possível ler a imagem: {image_path}")
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -57,14 +57,18 @@ class ImageOCR:
 
         return texto.strip()
 
-    def process(self) -> str:
-        """Executa o pipeline completo e retorna o texto extraído."""
-        self.preprocess_image()
+    def process(self, image_path: str) -> str:
+        """Executa o pipeline completo com o caminho da imagem e retorna o texto extraído."""
+        self.preprocess_image(image_path)
         return self.extract_text()
+
+    def OCR(self, image_path: str) -> str:
+        """Método público para extrair texto a partir do caminho da imagem."""
+        return self.process(image_path)
 
 
 if __name__ == "__main__":
-    ocr = ImageOCR("comprovanteNubank.png")
-    texto = ocr.process()
+    ocr = ImageOCR()
+    texto = ocr.OCR("comprovanteNubank.png")
     print("\n=== TEXTO EXTRAÍDO ===\n")
     print(texto)
