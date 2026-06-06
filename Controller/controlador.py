@@ -41,7 +41,12 @@ class Controlador:
         if self.upload_file is not None:
             self.upload_file.file.seek(0)
             conteudo = self.upload_file.file.read()
+            print(f"Upload recebido: filename={self.upload_file.filename} content_type={self.upload_file.content_type} size={len(conteudo)}")
             self.caminho_salvo.write_bytes(conteudo)
+            if len(conteudo) == 0:
+                raise ValueError(
+                    f"Upload salvo como arquivo vazio: {self.caminho_salvo} (tamanho=0)"
+                )
         else:
             shutil.copy2(self.caminho_entrada, self.caminho_salvo)
         return str(self.caminho_salvo)
@@ -121,7 +126,12 @@ class Controlador:
 async def upload_arquivo(file: UploadFile = File(...)) -> bool:
     """Recebe upload via FastAPI no caminho /ms-pix-inteligente-py, processa o arquivo e retorna True se tudo der certo."""
     controlador = Controlador(file)
-    return controlador.processar_fluxo()
+    try:
+        return controlador.processar_fluxo()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 if __name__ == "__main__":
