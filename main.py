@@ -1,7 +1,7 @@
-from tratamentoImg import TratamentoImagem
-from imagenOcr import ImageOCR
-from tramentoDados import TextoTratamento
-from separacaoDados import SeparadorDados
+from ocr.tratamento_imagem import TratamentoImagem
+from ocr.image_ocr import ImageOCR
+from ocr.texto_tratamento import TextoTratamento
+from ocr.separacao_dados import SeparadorDados
 import shutil
 import os
 from pathlib import Path
