@@ -29,7 +29,12 @@ class SeparadorDados:
         self.lista = lista
 
     def processar(self) -> Dict[str, Optional[str]]:
-        """Recebe a lista e retorna o dicionário com banco, hora, recebedor e valor."""
+        """Recebe a lista e retorna o dicionário com banco, hora, recebedor e valor.
+
+        Nota: o campo `recebedor` representa o nome extraído do comprovante; quando
+        for possível identificar o pagador (quem fez a transação), esse nome será
+        usado para o campo (atendimento ao pedido do usuário).
+        """
         if len(self.lista) == 1:
             tokens = re.split(r"[\n\r]+|[;,]\s*|\s{2,}", self.lista[0])
         else:
@@ -39,7 +44,8 @@ class SeparadorDados:
         banco = self._encontrar_banco(tokens)
         hora = self._encontrar_hora(texto)
         valor = self._encontrar_valor(texto)
-        recebedor = self._encontrar_recebedor(tokens, banco, hora, valor)
+        pagador = self._encontrar_pagador(tokens, banco, hora, valor)
+        recebedor = pagador or self._encontrar_recebedor(tokens, banco, hora, valor)
 
         return {"banco": banco, "hora": hora, "recebedor": recebedor, "valor": valor}
 
@@ -78,6 +84,131 @@ class SeparadorDados:
         """Remove símbolos e espaços desnecessários do valor."""
         return valor.replace("R$", "").strip()
 
+    def _is_valid_name(self, s: str) -> bool:
+        if not s or len(s) < 3:
+            return False
+        words = [w for w in re.split(r"\s+", s) if w]
+        if len(words) < 2:
+            return False
+        if any(len(re.sub(r"[^A-Za-zÀ-ÿ]", "", w)) < 2 for w in words):
+            return False
+        lower = s.strip().lower()
+        if lower in MONTH_ABBREVS:
+            return False
+        return True
+
+    def _encontrar_pagador(
+        self,
+        tokens: List[str],
+        banco: Optional[str],
+        hora: Optional[str],
+        valor: Optional[str],
+    ) -> Optional[str]:
+        """Tenta identificar quem fez a transação (pagador/remetente).
+
+        Procura por padrões explícitos como 'DE:', 'ORIGEM:', 'REMETENTE:',
+        ou frases como 'QUE FEZ A TRANSACAO <nome>' / 'QUEM FEZ O PIX <nome>'.
+        """
+        lower_tokens = [t.lower() for t in tokens]
+        full_text = " ".join(tokens)
+
+        # 0a) Captura explícita do bloco 'Dados de quem fez' seguido por 'Nome' e o nome na próxima linha
+        for i, lt in enumerate(lower_tokens):
+            if "dados de quem fez" in lt or "dados de quem fez a" in lt or ("dados de quem" in lt and "fez" in lt):
+                # procurar próximos tokens para localizar a linha 'Nome' e o nome em seguida
+                for j in range(1, 6):
+                    if i + j >= len(tokens):
+                        break
+                    cand = tokens[i + j].strip()
+                    if not cand:
+                        continue
+                    # se a linha for 'Nome', tente a próxima linha como nome
+                    if cand.lower().startswith("nome"):
+                        if i + j + 1 < len(tokens):
+                            candidate = tokens[i + j + 1].strip()
+                        else:
+                            candidate = ""
+                    else:
+                        candidate = cand
+                    name = self._extrair_nome_de_linha(candidate)
+                    if name and self._is_valid_name(name):
+                        return name
+
+        # Verifica tokens que contenham frases como 'que fez', 'quem fez' seguido do nome
+        for token in tokens:
+            lt = token.lower()
+            for phrase in ("que fez a transacao", "que fez a transação", "quem fez o pix", "quem fez o pix", "quem fez", "quem enviou", "quem efetuou", "quem realizou"):
+                if phrase in lt:
+                    start = lt.find(phrase) + len(phrase)
+                    candidate = token[start:].strip(" :,-\t")
+                    name = self._extrair_nome_de_linha(candidate)
+                    if name and self._is_valid_name(name):
+                        return name
+
+        # 0) Busca em todo o texto por frases que indiquem o remetente/pagador
+        m = re.search(
+            r"(?:quem (?:fez|enviou|efetuou|realizou)(?: a| o)?(?: transac(?:ç|c)ao|transfer(?:ê|e)ncia|pix)[\s:,-]+|que fez(?: a| o)?(?: transac(?:ç|c)ao|transfer(?:ê|e)ncia)?[\s:,-]+)([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]+)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if m:
+            candidate = m.group(1).strip()
+            name = self._extrair_nome_de_linha(candidate)
+            if name and self._is_valid_name(name):
+                return name
+
+        # 0b) Padrões 'DE:' ou 'DE ' seguidos do nome no texto completo
+        m2 = re.search(r"\bde[:\s-]+([A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s]+)", full_text, re.IGNORECASE)
+        if m2:
+            candidate = m2.group(1).strip()
+            name = self._extrair_nome_de_linha(candidate)
+            if name and self._is_valid_name(name):
+                return name
+
+        # 1) Procura por labels explícitas de remetente/pagador por linha/token
+        for i, token in enumerate(tokens):
+            m = re.search(
+                r"^(?:de|origem|origem nome|remetente|pagador|envio(?: de)?|nome do remetente)\b[:\s-]*(.*)$",
+                token,
+                re.IGNORECASE,
+            )
+            if m:
+                candidate = m.group(1).strip()
+                if candidate:
+                    name = self._extrair_nome_de_linha(candidate)
+                    if name and self._is_valid_name(name):
+                        return name
+                for j in range(1, 4):
+                    if i + j < len(tokens):
+                        candidate = tokens[i + j].strip()
+                        name = self._extrair_nome_de_linha(candidate)
+                        if name and self._is_valid_name(name):
+                            return name
+
+        # 2) Se não encontrar label explícita, pega o primeiro nome válido antes do destino/para
+        cutoff = len(tokens)
+        for label in (
+            "para",
+            "destino",
+            "destino nome",
+            "favorecido",
+            "beneficiário",
+            "beneficiario",
+            "recebedor",
+            "destinatario",
+        ):
+            if label in lower_tokens:
+                index = lower_tokens.index(label)
+                if index < cutoff:
+                    cutoff = index
+
+        for token in tokens[:cutoff]:
+            name = self._extrair_nome_de_linha(token)
+            if name and self._is_valid_name(name):
+                return name
+
+        return None
+
     def _encontrar_recebedor(
         self,
         tokens: List[str],
@@ -100,34 +231,41 @@ class SeparadorDados:
         if not text:
             return None
 
-        # helper de validação
         def valid_name(s: str) -> bool:
-            if not s or len(s) < 3:
-                return False
-            # deve ter pelo menos duas palavras com pelo menos 2 letras
-            words = [w for w in re.split(r"\s+", s) if w]
-            if len(words) < 2:
-                return False
-            if any(len(re.sub(r"[^A-Za-zÀ-ÿ]", "", w)) < 2 for w in words):
-                return False
-            # rejeitar abreviações de mês e tokens curtos
-            lower = s.strip().lower()
-            if lower in MONTH_ABBREVS:
-                return False
-            return True
+            return self._is_valid_name(s)
 
         # 1) Procura por labels e pega a próxima linha útil (ex: 'Dados do recebedor' -> próxima linha)
         lower_tokens = [t.lower() for t in tokens]
-        for label in ("destino", "nome", "dados do recebedor", "dados do recebimento", "dados do beneficiario", "dados do favorecido", "para", "recebedor"):
-            if label in lower_tokens:
-                idx = lower_tokens.index(label)
-                # buscar até 3 linhas à frente para encontrar um nome
-                for j in range(1, 4):
-                    if idx + j < len(tokens):
-                        cand = tokens[idx + j].strip()
+        receiver_labels = (
+            "destino",
+            "nome",
+            "dados do recebedor",
+            "dados do recebimento",
+            "dados do beneficiario",
+            "dados do favorecido",
+            "para",
+            "recebedor",
+            "destinatario",
+            "destinatário",
+        )
+        for i, lt in enumerate(lower_tokens):
+            for label in receiver_labels:
+                if lt == label or lt.startswith(label + " ") or lt.startswith(label + ":"):
+                    token = tokens[i]
+                    m = re.search(rf"^{re.escape(label)}[:\s-]+(.+)$", token, re.IGNORECASE)
+                    if m:
+                        cand = m.group(1).strip()
                         name = self._extrair_nome_de_linha(cand)
                         if name and valid_name(name):
                             return name
+
+                    # buscar até 3 linhas à frente para encontrar um nome
+                    for j in range(1, 4):
+                        if i + j < len(tokens):
+                            cand = tokens[i + j].strip()
+                            name = self._extrair_nome_de_linha(cand)
+                            if name and valid_name(name):
+                                return name
 
         # 1a) Prefer explicit markers: linhas que começam com 'Nome '
         for t in tokens:
