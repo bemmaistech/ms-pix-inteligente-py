@@ -11,3 +11,6 @@ ENV/
 # Editor files
 .vscode/
 *.swp
+
+img/*.png
+*.bak
