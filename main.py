@@ -5,10 +5,11 @@ from ocr.separacao_dados import SeparadorDados
 import shutil
 import os
 from pathlib import Path
+from Controller.controlador import Controlador
 
 
 def main() -> None:
-    caminho_imagem = "ComprovanteSantander.pdf"
+    caminho_imagem = Controlador("ComprovanteSantander.pdf").salvar_para_projeto()
 
     # detectar se poppler está disponível no PATH
     poppler_path = None

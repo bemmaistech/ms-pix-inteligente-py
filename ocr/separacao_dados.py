@@ -68,11 +68,15 @@ class SeparadorDados:
         # padrões como R$ 1.234,56 ou 1234.56 ou 1234,56
         m = re.search(r"R\$\s?[0-9\.,]+", texto)
         if m:
-            return m.group(0)
+            return self._normalizar_valor(m.group(0))
         m = re.search(r"\b[0-9]{1,3}(?:[\.,][0-9]{3})*(?:[\.,][0-9]{2})\b", texto)
         if m:
-            return m.group(0)
+            return self._normalizar_valor(m.group(0))
         return None
+
+    def _normalizar_valor(self, valor: str) -> str:
+        """Remove símbolos e espaços desnecessários do valor."""
+        return valor.replace("R$", "").strip()
 
     def _encontrar_recebedor(
         self,
