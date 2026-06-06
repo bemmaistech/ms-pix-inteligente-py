@@ -117,9 +117,9 @@ class Controlador:
             )
 
 
-@app.post("/upload")
+@app.post("/ms-pix-inteligente-py")
 async def upload_arquivo(file: UploadFile = File(...)) -> bool:
-    """Recebe upload via FastAPI, processa o arquivo e retorna True se tudo der certo."""
+    """Recebe upload via FastAPI no caminho /ms-pix-inteligente-py, processa o arquivo e retorna True se tudo der certo."""
     controlador = Controlador(file)
     return controlador.processar_fluxo()
 
