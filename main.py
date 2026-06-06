@@ -1,16 +1,47 @@
-from trataentoPng import ImageOCR
+from tratamentoImg import TratamentoImagem
+from imagenOcr import ImageOCR
 from tramentoDados import TextoTratamento
+from separacaoDados import SeparadorDados
+import shutil
+import os
+from pathlib import Path
 
 
-imagem = "comprovanteNubank.jpeg"  # Ajuste para o caminho da sua imagem
-tratamento_ocr = ImageOCR()
-texto = tratamento_ocr.OCR(imagem)
+def main() -> None:
+    caminho_imagem = "ComprovanteSantander.pdf"
 
-tratamento_texto = TextoTratamento(texto)
-linhas_tratadas = tratamento_texto.process()
+    # detectar se poppler está disponível no PATH
+    poppler_path = None
+    if Path(caminho_imagem).suffix.lower() == ".pdf":
+        if shutil.which("pdfinfo"):
+            poppler_path = None
+        else:
+            # tenta variável de ambiente customizada
+            poppler_env = os.environ.get("POPPLER_PATH") or os.environ.get("POPLER_PATH")
+            if poppler_env and Path(poppler_env).exists():
+                poppler_path = poppler_env
+            else:
+                # tentativa por caminho padrão comum de download
+                candidate = Path(r"C:\Users\dener\Downloads\Release-26.02.0-0\poppler-26.02.0\Library\bin")
+                if candidate.exists():
+                    poppler_path = str(candidate)
 
-print("\n=== TEXTO EXTRAÍDO ===\n")
-print(texto)
-print("\n=== LINHAS TRATADAS ===\n")
-print(linhas_tratadas)
+    # 1) tratamento da imagem
+    tratamento_imagem = TratamentoImagem(caminho_imagem, poppler_path=poppler_path)
+    imagem_tratada = tratamento_imagem.preprocessar_imagem()
+
+    # 2) OCR na imagem já tratada
+    ocr = ImageOCR()
+    texto = ocr.extrair_texto(imagem_tratada)
+
+    linhas = TextoTratamento(texto).process()
+    dados = SeparadorDados(linhas).processar()
+
+    print("\n=== TEXTO EXTRAÍDO ===\n", texto, sep="")
+    print("\n=== LINHAS TRATADAS ===\n", linhas, sep="")
+    print("\n=== DADOS SEPARADOS ===\n", dados, sep="")
+
+
+if __name__ == "__main__":
+    main()
 
