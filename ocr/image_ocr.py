@@ -2,10 +2,50 @@ import cv2
 import numpy as np
 import pytesseract
 import os
+import shutil
+import logging
 
-# Ajuste do caminho do tesseract, mantenha se necessário
-pytesseract.pytesseract.tesseract_cmd = r"C:\Users\dener\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-os.environ["TESSDATA_PREFIX"] = r"C:\Users\dener\AppData\Local\Programs\Tesseract-OCR\tessdata"
+logger = logging.getLogger(__name__)
+
+
+def _detect_tesseract():
+    # Prefer explicit environment variable
+    for key in ("TESSERACT_CMD", "TESSERACT_PATH"):
+        v = os.environ.get(key)
+        if v:
+            return v
+
+    # Then try system PATH
+    which = shutil.which("tesseract")
+    if which:
+        return which
+
+    # Finally try common Windows install locations (including current user's AppData)
+    common = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.join(os.path.expanduser("~"), "AppData", "Local", "Programs", "Tesseract-OCR", "tesseract.exe"),
+    ]
+    for p in common:
+        if os.path.exists(p):
+            return p
+
+    return None
+
+
+# Detect and configure Tesseract (non-destructive: only set if found)
+tesseract_cmd = _detect_tesseract()
+if tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+    # Set TESSDATA_PREFIX if not already set and tessdata folder exists
+    if not os.environ.get("TESSDATA_PREFIX"):
+        tessdata_guess = os.path.join(os.path.dirname(tesseract_cmd), "tessdata")
+        if os.path.isdir(tessdata_guess):
+            os.environ["TESSDATA_PREFIX"] = tessdata_guess
+else:
+    logger.warning(
+        "Tesseract não encontrado automaticamente. Defina TESSERACT_CMD ou instale/adicione tesseract ao PATH."
+    )
 
 
 class ImageOCR:
